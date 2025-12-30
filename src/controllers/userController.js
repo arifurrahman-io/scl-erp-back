@@ -118,3 +118,39 @@ exports.deleteUser = catchAsync(async (req, res) => {
   await User.findByIdAndDelete(req.params.id);
   res.status(200).json({ message: "Record removed" });
 });
+
+exports.getUsersByGroup = async (req, res) => {
+  try {
+    const { roleGroup, campusId } = req.query;
+    const filter = { status: "Active" };
+
+    // 1. Role Group Filtering logic
+    if (roleGroup === "ACADEMIC") {
+      filter.role = { $in: ["TEACHER", "CLASS_TEACHER"] };
+    }
+
+    // 2. Campus Assignment Check
+    if (campusId) {
+      filter.assignedCampuses = { $in: [campusId] };
+    }
+
+    // 3. FIX: Query the USER model, not Student
+    const users = await User.find(filter)
+      .select("name role photo assignedCampuses")
+      .lean();
+
+    res.status(200).json(users);
+  } catch (error) {
+    res.status(500).json({ message: "Access denied to user directory" });
+  }
+};
+
+exports.getStudentById = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.status(200).json(user);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

@@ -3,48 +3,39 @@ const router = express.Router();
 const routineController = require("../controllers/routineController");
 const { protect, restrictTo } = require("../middleware/authMiddleware");
 
-/**
- * 1. TEACHER & STAFF VIEW ROUTES
- * These endpoints allow staff to see their own assignments.
- * 'protect' ensures the user is logged in.
- */
-router.get(
-  "/my-routine",
-  protect,
-  restrictTo("TEACHER", "CLASS_TEACHER", "ADMIN", "SUPER_ADMIN"),
-  routineController.getMyRoutine
+// 1. BASE PROTECTION
+// Every user must be logged in to interact with any routine data
+router.use(protect);
+
+router.get("/my-scopes", routineController.getMyScopes);
+
+// 2. DEFINE ALLOWED ROLES
+// Defining all roles from your system to keep the code clean
+const ALL_ROLES = [
+  "SUPER_ADMIN",
+  "ADMIN",
+  "TEACHER",
+  "CLASS_TEACHER",
+  "ACCOUNTANT",
+];
+
+// 3. FULL CRUD ACCESS FOR ALL ROLES
+// This fixes the 403 error for teachers and class teachers
+
+// READ: View routines
+router.get("/", restrictTo(...ALL_ROLES), routineController.getRoutine);
+
+// CREATE: Add new routine entries
+router.post(
+  "/create",
+  restrictTo(...ALL_ROLES),
+  routineController.createRoutine
 );
 
-router.get(
-  "/my-scopes",
-  protect,
-  restrictTo("TEACHER", "CLASS_TEACHER", "ADMIN", "SUPER_ADMIN"),
-  routineController.getAssignedScopes
-);
-
-/**
- * 2. ADMINISTRATIVE & SCHEDULING ROUTES
- * Gates all following routes to high-level staff only.
- */
-router.use(protect, restrictTo("SUPER_ADMIN", "ADMIN"));
-
-// Get full routine for a specific campus/class (Admin Dashboard View)
-// Moved above /:id to prevent route parameter collision
-router.get("/admin/view", routineController.getAdminRoutineView);
-
-// Create a new routine entry
-router.post("/", routineController.createRoutine);
-
-// Bulk operations (Useful for setting up a whole class at once)
-router.put(
-  "/bulk-update",
-  routineController.bulkUpdateRoutine ||
-    ((req, res) => res.status(501).json({ message: "Not implemented yet" }))
-);
-
-/**
- * 3. SPECIFIC ASSIGNMENT MANAGEMENT
- */
-router.route("/:id").delete(routineController.deleteRoutine);
+// UPDATE & DELETE: Modify existing entries by ID
+router
+  .route("/:id")
+  .put(restrictTo(...ALL_ROLES), routineController.updateRoutine)
+  .delete(restrictTo(...ALL_ROLES), routineController.deleteRoutine);
 
 module.exports = router;

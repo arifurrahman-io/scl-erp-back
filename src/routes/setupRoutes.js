@@ -11,20 +11,33 @@ const {
   deleteMasterSubject,
   getSubjectsByClass,
   deleteCampusClass,
-  getMasterStructure, // New Controller Method
+  getMasterStructure,
   createSection,
   getSectionsByCampus,
   deleteSection,
 } = require("../controllers/setupController");
 
-// Global Protection
+// 1. GLOBAL PROTECTION
+// Every user must be authenticated to access setup data
 router.use(protect);
 
-// --- NEW: Dynamic Master Structure (Used by Teacher Management/Attendance) ---
-// This handles the URL: /api/settings/master-structure
+// 2. PUBLIC ACADEMIC ACCESS (Read-Only)
+// These routes must be accessible to TEACHERS and CLASS_TEACHERS
+// so they can load dropdowns for Routines, Attendance, and Marks.
+
+// Used by Teacher Management/Attendance
 router.get("/master-structure", getMasterStructure);
 
-// --- Admin Only Routes ---
+// Fetch classes and sections for a specific campus
+router.get("/classes/:campusId", getClassesByCampus);
+router.get("/sections/:campusId", getSectionsByCampus);
+
+// Fetch subjects for a specific class
+// This fixes the 403 error on "GET /api/setup/subjects/:classId"
+router.get("/subjects/:classId", getSubjectsByClass);
+
+// 3. ADMINISTRATIVE LOCKDOWN (Write Operations)
+// Any route below this line requires Admin/Super Admin privileges.
 router.use(admin);
 
 // Blueprint Management
@@ -35,18 +48,13 @@ router.post("/master-subjects", createMasterSubject);
 // Deployment Logic
 router.post("/deploy", deployToCampus);
 
-// Campus-specific views
-router.get("/classes/:campusId", getClassesByCampus);
-router.get("/subjects/:classId", getSubjectsByClass);
-
 // Subject & Class Management
 router.put("/subjects/:id", updateMasterSubject);
 router.delete("/subjects/:id", deleteMasterSubject);
 router.delete("/classes/:id", deleteCampusClass);
 
-// --- SECTION MANAGEMENT ---
-router.post("/sections", protect, admin, createSection);
-router.get("/sections/:campusId", protect, getSectionsByCampus);
-router.delete("/sections/:id", protect, admin, deleteSection);
+// Section Management (Write Actions)
+router.post("/sections", createSection);
+router.delete("/sections/:id", deleteSection);
 
 module.exports = router;

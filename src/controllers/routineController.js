@@ -1,119 +1,133 @@
 const Routine = require("../models/Routine");
+const catchAsync = require("../utils/catchAsync");
 
-// @desc    Get the logged-in teacher's schedule
-exports.getMyRoutine = async (req, res) => {
-  try {
-    const routine = await Routine.find({ teacher: req.user._id })
-      .populate("class", "name")
-      .populate("section", "name")
-      .populate("subject", "name")
-      .sort({ day: 1, startTime: 1 });
+// @desc    Get all mappings (Teacher to Subject/Section)
+// @route   GET /api/routine
+exports.getRoutine = catchAsync(async (req, res) => {
+  const { campusId, academicYearId } = req.query;
+  const filter = {};
 
-    res.status(200).json(routine);
-  } catch (error) {
-    console.error("GET_MY_ROUTINE_ERROR:", error);
-    res.status(500).json({ message: "Error fetching routine" });
+  // 1. Sanitize inputs to ignore "undefined" strings from frontend
+  if (campusId && campusId !== "undefined") {
+    filter.campus = campusId;
   }
-};
 
-// @desc    Get unique classes/subjects assigned for dropdowns
-// IMPROVEMENT: Added "Unique" filtering so same class doesn't appear twice
-exports.getAssignedScopes = async (req, res) => {
-  try {
-    const assignments = await Routine.find({ teacher: req.user._id })
-      .populate("class", "name")
-      .populate("section", "name")
-      .populate("subject", "name");
-
-    const scopes = assignments.map((a) => ({
-      classId: a.class?._id,
-      className: a.class?.name,
-      sectionId: a.section?._id,
-      sectionName: a.section?.name,
-      subjectId: a.subject?._id,
-      subjectName: a.subject?.name,
-      isClassTeacher: a.isClassTeacher,
-    }));
-
-    // Remove duplicates if teacher teaches multiple periods for same class/subject
-    const uniqueScopes = Array.from(
-      new Set(scopes.map((s) => JSON.stringify(s)))
-    ).map((s) => JSON.parse(s));
-
-    res.status(200).json(uniqueScopes);
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching scopes" });
+  // Handle cases where multiple IDs or "undefined" are passed
+  if (academicYearId && academicYearId !== "undefined") {
+    // If the frontend sends an array or duplicate, take the last valid ID
+    const yearId = Array.isArray(academicYearId)
+      ? academicYearId.pop()
+      : academicYearId;
+    filter.academicYear = yearId;
   }
-};
 
-// @desc    Admin: Get full routine for a specific class/section
-exports.getAdminRoutineView = async (req, res) => {
-  try {
-    const { classId, sectionId } = req.query;
-    const routine = await Routine.find({ class: classId, section: sectionId })
-      .populate("teacher", "name")
-      .populate("subject", "name")
-      .sort({ day: 1, startTime: 1 });
+  // 2. CRITICAL: Remove .sort({ day: 1, startTime: 1 })
+  const routines = await Routine.find(filter)
+    .populate("teacher", "name")
+    .populate("class", "name")
+    .populate("section", "name")
+    .populate("subject", "name")
+    .sort({ createdAt: -1 }) // Sort by newest assignment instead
+    .lean();
 
-    res.status(200).json(routine);
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching class routine" });
+  res.status(200).json(routines);
+});
+
+// @desc    Create new assignment mapping
+// @route   POST /api/routine/create
+exports.createRoutine = catchAsync(async (req, res) => {
+  const {
+    teacher,
+    campus,
+    class: classId,
+    section,
+    subject,
+    academicYear,
+    isClassTeacher,
+  } = req.body;
+
+  // 1. Check if this Subject in this Section already has a teacher assigned
+  const existingMapping = await Routine.findOne({
+    academicYear,
+    campus,
+    class: classId,
+    section,
+    subject,
+  });
+
+  if (existingMapping) {
+    return res.status(400).json({
+      message:
+        "Conflict: This subject is already assigned to another teacher in this section.",
+    });
   }
-};
 
-// @desc    Assign a teacher to a slot
-exports.createRoutine = async (req, res) => {
-  try {
-    const {
-      teacher,
+  // 2. If isClassTeacher is true, ensure no other Class Teacher exists for this specific section
+  if (isClassTeacher) {
+    const classTeacherConflict = await Routine.findOne({
+      academicYear,
+      campus,
       class: classId,
       section,
-      subject,
-      day,
-      startTime,
-      endTime,
-      isClassTeacher,
-      academicYear,
-    } = req.body;
-
-    // Conflict Check
-    const conflict = await Routine.findOne({
-      teacher,
-      day,
-      startTime,
-      academicYear,
+      isClassTeacher: true,
     });
-    if (conflict) {
+
+    if (classTeacherConflict) {
       return res.status(400).json({
-        message: "Teacher is already assigned to another class at this time.",
+        message:
+          "Conflict: This section already has a designated Class Teacher.",
       });
     }
-
-    const newRoutine = await Routine.create({
-      teacher,
-      campus: req.user.campusId,
-      class: classId,
-      section,
-      subject,
-      day,
-      startTime,
-      endTime,
-      isClassTeacher,
-      academicYear,
-    });
-
-    res.status(201).json(newRoutine);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
   }
-};
 
-// @desc    Delete a routine assignment
-exports.deleteRoutine = async (req, res) => {
-  try {
-    await Routine.findByIdAndDelete(req.params.id);
-    res.status(200).json({ message: "Assignment removed" });
-  } catch (error) {
-    res.status(500).json({ message: "Error deleting routine" });
-  }
-};
+  const routine = await Routine.create(req.body);
+  res.status(201).json({ status: "success", data: routine });
+});
+
+// @desc    Update mapping assignment
+// @route   PUT /api/routine/:id
+exports.updateRoutine = catchAsync(async (req, res) => {
+  const routine = await Routine.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!routine)
+    return res.status(404).json({ message: "Assignment not found" });
+
+  res.status(200).json(routine);
+});
+
+// @desc    Remove assignment mapping
+// @route   DELETE /api/routine/:id
+exports.deleteRoutine = catchAsync(async (req, res) => {
+  const routine = await Routine.findByIdAndDelete(req.params.id);
+
+  if (!routine)
+    return res.status(404).json({ message: "Assignment not found" });
+
+  res.status(200).json({ message: "Teacher assignment removed successfully" });
+});
+
+// @desc    Get Teacher's Specific Scopes (Used for Attendance Logic)
+// @route   GET /api/routine/my-scopes
+exports.getMyScopes = catchAsync(async (req, res) => {
+  // Finds all sections where the logged-in user is assigned
+  const scopes = await Routine.find({ teacher: req.user._id })
+    .populate("class", "name")
+    .populate("section", "name")
+    .populate("campus", "name")
+    .lean();
+
+  // Formatting for the frontend scope logic
+  const formattedScopes = scopes.map((s) => ({
+    campusId: s.campus?._id,
+    classId: s.class?._id,
+    className: s.class?.name,
+    sectionId: s.section?._id,
+    sectionName: s.section?.name,
+    isClassTeacher: s.isClassTeacher,
+  }));
+
+  res.status(200).json(formattedScopes);
+});

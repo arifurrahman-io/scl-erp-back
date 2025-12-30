@@ -2,6 +2,7 @@ const Class = require("../models/Class");
 const Subject = require("../models/Subject");
 const Section = require("../models/Section");
 const Student = require("../models/Student");
+const catchAsync = require("../utils/catchAsync");
 
 // ১. গ্লোবাল মাস্টার ক্লাস তৈরি (Blueprint)
 exports.createMasterClass = async (req, res) => {
@@ -228,3 +229,49 @@ exports.deleteSection = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+exports.getSubjectsByClassAndCampus = async (req, res) => {
+  try {
+    const { classId } = req.params;
+    const { campusId } = req.query;
+
+    // Fetch subjects that are deployed specifically to this campus and class
+    const subjects = await Subject.find({
+      class: classId,
+      campuses: campusId, // Assuming Subject model has a campuses array
+    }).select("name code");
+
+    res.status(200).json(subjects);
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to fetch dynamic subjects",
+      error: error.message,
+    });
+  }
+};
+
+exports.getStudentsForAttendance = catchAsync(async (req, res) => {
+  const { class: classId, section: sectionId, campus: campusId } = req.query;
+
+  // 1. Validate inputs to prevent CastErrors (Common cause of 500)
+  if (!classId || !sectionId || !campusId) {
+    return res
+      .status(400)
+      .json({ message: "Missing required filtering parameters" });
+  }
+
+  const filter = {
+    class: classId,
+    section: sectionId,
+    campus: campusId,
+    status: "Active", // Only show active students for attendance
+  };
+
+  // 2. Execute query with Lean for performance
+  const students = await Student.find(filter)
+    .select("name rollNumber studentId avatar") // Only fetch needed fields for attractive UI [cite: 2025-10-11]
+    .sort({ rollNumber: 1 })
+    .lean();
+
+  res.status(200).json(students);
+});

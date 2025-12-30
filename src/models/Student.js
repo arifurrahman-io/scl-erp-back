@@ -4,7 +4,11 @@ const StudentSchema = new mongoose.Schema(
   {
     studentId: { type: String, required: true, unique: true },
     name: { type: String, required: true },
-    campus: { type: String, required: true },
+    campusId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Campus",
+      required: true,
+    },
     class: { type: String, required: true },
     section: { type: String, required: true },
     academicYear: {

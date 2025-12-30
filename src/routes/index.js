@@ -10,6 +10,7 @@ const reportRoutes = require("./reportRoutes");
 const campusRoutes = require("./campusRoutes");
 const setupRoutes = require("./setupRoutes");
 const routineRoutes = require("./routineRoutes");
+const attendanceRouter = require("./attendanceRoutes");
 
 // 1. Authentication & System Users
 router.use("/auth", authRoutes);
@@ -28,5 +29,6 @@ router.use("/campuses", campusRoutes); // Branch Data & School Profile
 router.use("/setup", setupRoutes); // Master Class/Subject Blueprints
 router.use("/routine", routineRoutes);
 router.use("/settings", setupRoutes);
+router.use("/attendance", attendanceRouter);
 
 module.exports = router;

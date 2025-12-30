@@ -1,15 +1,29 @@
-const mongoose = require("mongoose"); // Add this line
+// backend/src/models/Attendance.js
+const mongoose = require("mongoose");
 
-const AttendanceSchema = new mongoose.Schema({
-  academicYear: { type: mongoose.Schema.Types.ObjectId, ref: "AcademicYear" },
-  student: { type: mongoose.Schema.Types.ObjectId, ref: "Student" },
-  date: { type: Date, required: true },
-  status: {
-    type: String,
-    enum: ["Present", "Absent", "Late"],
-    default: "Present",
+const attendanceSchema = new mongoose.Schema({
+  date: { type: String, required: true }, // Format: YYYY-MM-DD
+  campus: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Campus",
+    required: true,
   },
-  takenBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  class: { type: String, required: true }, // Matches "Four"
+  section: { type: String, required: true }, // Matches "A"
+  records: [
+    {
+      student: { type: mongoose.Schema.Types.ObjectId, ref: "Student" },
+      status: { type: String, enum: ["Present", "Absent"], default: "Present" },
+    },
+  ],
+  submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  lastUpdated: { type: Date, default: Date.now },
 });
 
-module.exports = mongoose.model("Attendance", AttendanceSchema); // Add this line
+// Prevent duplicate attendance for the same class/section on the same day
+attendanceSchema.index(
+  { date: 1, campus: 1, class: 1, section: 1 },
+  { unique: true }
+);
+
+module.exports = mongoose.model("Attendance", attendanceSchema);
