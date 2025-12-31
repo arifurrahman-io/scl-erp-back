@@ -5,39 +5,27 @@ const catchAsync = require("../utils/catchAsync");
 /**
  * @desc    Submit or Update daily attendance logs
  * @route   POST /api/attendance/submit
- * @access  Private (Teacher/Admin)
  */
 exports.submitAttendance = catchAsync(async (req, res) => {
   const { date, campus, class: className, section, records } = req.body;
 
-  // 1. Validation for essential fields
   if (!date || !campus || !className || !section || !records) {
     return res.status(400).json({
       status: "fail",
       message:
-        "Incomplete data. Please ensure campus, class, section, and records are provided.",
+        "Incomplete data. Campus, class, section, and records are required.",
     });
   }
 
-  // 2. Atomic Upsert Logic [cite: 2025-10-11]
-  // Matches "Four" and "A" labels exactly as stored in your Student records
+  // Atomic Upsert: Updates if exists, creates if not [cite: 2025-10-11]
   const attendance = await Attendance.findOneAndUpdate(
-    {
-      date, // YYYY-MM-DD string
-      campus,
-      class: className,
-      section,
-    },
+    { date, campus, class: className, section },
     {
       records, // Array of { student: ID, status: "Present"/"Absent" }
       submittedBy: req.user._id,
       lastUpdated: Date.now(),
     },
-    {
-      upsert: true, // Creates a new record if one doesn't exist for this date/class/section [cite: 2025-10-11]
-      new: true,
-      runValidators: true,
-    }
+    { upsert: true, new: true, runValidators: true }
   );
 
   res.status(200).json({
@@ -48,20 +36,46 @@ exports.submitAttendance = catchAsync(async (req, res) => {
 });
 
 /**
- * @desc    Get recent attendance logs for a specific section
+ * @desc    Check for existing attendance and return records for UI mapping
+ * @route   GET /api/attendance/check
+ */
+exports.checkAttendance = catchAsync(async (req, res) => {
+  const { date, class: className, section, campus } = req.query;
+
+  // Validation to prevent "Sync error" on incomplete requests
+  if (!date || !className || !section || !campus) {
+    return res.status(200).json({ exists: false, records: [] });
+  }
+
+  const record = await Attendance.findOne({
+    date,
+    class: className,
+    section: section,
+    campus: campus,
+  }).lean();
+
+  // IMPORTANT: Matches the 'res.data.records' expectation in your frontend
+  res.status(200).json({
+    status: "success",
+    exists: !!record,
+    records: record ? record.records : [], // Returns the nested records array directly
+  });
+});
+
+/**
+ * @desc    Get attendance history with teacher population
  * @route   GET /api/attendance/history
  */
 exports.getAttendanceHistory = catchAsync(async (req, res) => {
   const { campus, class: className, section } = req.query;
 
-  // Build dynamic filter based on query params [cite: 2025-10-11]
   const filter = {};
   if (campus) filter.campus = campus;
   if (className) filter.class = className;
   if (section) filter.section = section;
 
   const history = await Attendance.find(filter)
-    .populate("submittedBy", "name") // Show which teacher took the attendance
+    .populate("submittedBy", "name") // UI displays which teacher took attendance [cite: 2025-10-11]
     .sort({ date: -1 })
     .limit(30)
     .lean();
@@ -70,23 +84,5 @@ exports.getAttendanceHistory = catchAsync(async (req, res) => {
     status: "success",
     results: history.length,
     data: history,
-  });
-});
-
-exports.checkAttendance = catchAsync(async (req, res) => {
-  const { date, class: className, section, campus } = req.query;
-
-  // Find record matching the exact string labels from your DB
-  const record = await Attendance.findOne({
-    date, // "2025-12-30"
-    class: className, // "Four"
-    section: section, // "A"
-    campus: campus, // "69541c46..."
-  }).lean();
-
-  res.status(200).json({
-    status: "success",
-    exists: !!record,
-    data: record || null,
   });
 });

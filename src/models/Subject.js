@@ -9,11 +9,17 @@ const subjectSchema = new mongoose.Schema(
       ref: "Class",
       required: true,
     },
-    passMarks: { type: Number, default: 33 },
+    passMarks: { type: Number, default: 40 },
     distribution: {
+      // Core Categories
       subjective: { type: Number, default: 0 },
       objective: { type: Number, default: 0 },
       practical: { type: Number, default: 0 },
+
+      // Added Categories for continuous assessment
+      ct: { type: Number, default: 0 }, // Class Test Marks
+      diary: { type: Number, default: 0 }, // Diary/Behavior Marks
+      assignment: { type: Number, default: 0 }, // Assignment/Project Marks
     },
   },
   { timestamps: true }

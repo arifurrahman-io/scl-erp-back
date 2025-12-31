@@ -112,22 +112,24 @@ exports.deleteRoutine = catchAsync(async (req, res) => {
 // @desc    Get Teacher's Specific Scopes (Used for Attendance Logic)
 // @route   GET /api/routine/my-scopes
 exports.getMyScopes = catchAsync(async (req, res) => {
-  // Finds all sections where the logged-in user is assigned
-  const scopes = await Routine.find({ teacher: req.user._id })
-    .populate("class", "name")
-    .populate("section", "name")
-    .populate("campus", "name")
+  // 1. Fetch assignments for the logged-in user
+  const routines = await Routine.find({ teacher: req.user._id })
+    .populate("class", "name") // Gets class name (e.g., "Four")
+    .populate("section", "name") // Gets section name (e.g., "A")
+    .populate("subject", "name") // Gets subject name (e.g., "Bangla")
     .lean();
 
-  // Formatting for the frontend scope logic
-  const formattedScopes = scopes.map((s) => ({
-    campusId: s.campus?._id,
-    classId: s.class?._id,
-    className: s.class?.name,
-    sectionId: s.section?._id,
-    sectionName: s.section?.name,
-    isClassTeacher: s.isClassTeacher,
+  // 2. Map into a clean object for the frontend [cite: 2025-10-11]
+  const scopes = routines.map((r) => ({
+    classId: r.class?._id, // ObjectId for mark distribution query
+    className: r.class?.name, // "Four" for student list query
+    sectionName: r.section?.name, // "A" for student list query
+    subjectName: r.subject?.name, // "Bangla" for subject-wise marking
+    isClassTeacher: r.isClassTeacher, // For UI badges
   }));
 
-  res.status(200).json(formattedScopes);
+  // Filter out any potential nulls from deleted data
+  const validScopes = scopes.filter((s) => s.classId && s.subjectName);
+
+  res.status(200).json(validScopes);
 });

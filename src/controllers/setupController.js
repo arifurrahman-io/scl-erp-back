@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Class = require("../models/Class");
 const Subject = require("../models/Subject");
 const Section = require("../models/Section");
@@ -109,14 +110,17 @@ exports.deleteMasterSubject = async (req, res) => {
   }
 };
 
-exports.getSubjectsByClass = async (req, res) => {
-  try {
-    const subjects = await Subject.find({ class: req.params.classId });
-    res.status(200).json(subjects);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+exports.getSubjectsByClass = catchAsync(async (req, res) => {
+  const { classId } = req.params;
+
+  // Validate to prevent 500 crash
+  if (!classId || !mongoose.Types.ObjectId.isValid(classId)) {
+    return res.status(200).json([]);
   }
-};
+
+  const subjects = await Subject.find({ class: classId }).lean();
+  res.status(200).json(subjects || []);
+});
 
 exports.deleteCampusClass = async (req, res) => {
   try {
@@ -274,4 +278,33 @@ exports.getStudentsForAttendance = catchAsync(async (req, res) => {
     .lean();
 
   res.status(200).json(students);
+});
+
+exports.getMarkDistribution = catchAsync(async (req, res) => {
+  // Destructure exactly what the frontend is sending
+  const { classId, subjectName } = req.query;
+
+  // This check is triggering the 400 error
+  if (!classId || !subjectName) {
+    return res.status(400).json({
+      message: "Class ID and Subject Name are required",
+    });
+  }
+
+  // Find subject by Name and Class ObjectId
+  const subject = await Subject.findOne({
+    name: subjectName,
+    class: classId,
+  }).lean();
+
+  if (!subject || !subject.distribution) {
+    return res.status(404).json({ message: "No distribution found" });
+  }
+
+  // Formatting for the dynamic UI [cite: 2025-10-11]
+  const categories = Object.entries(subject.distribution)
+    .filter(([_, max]) => max > 0)
+    .map(([name, max]) => ({ name, max }));
+
+  res.status(200).json({ status: "success", categories });
 });

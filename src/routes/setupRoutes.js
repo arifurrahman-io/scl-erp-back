@@ -15,6 +15,7 @@ const {
   createSection,
   getSectionsByCampus,
   deleteSection,
+  getMarkDistribution,
 } = require("../controllers/setupController");
 
 // 1. GLOBAL PROTECTION
@@ -24,6 +25,8 @@ router.use(protect);
 // 2. PUBLIC ACADEMIC ACCESS (Read-Only)
 // These routes must be accessible to TEACHERS and CLASS_TEACHERS
 // so they can load dropdowns for Routines, Attendance, and Marks.
+
+router.get("/mark-distribution", getMarkDistribution);
 
 // Used by Teacher Management/Attendance
 router.get("/master-structure", getMasterStructure);
